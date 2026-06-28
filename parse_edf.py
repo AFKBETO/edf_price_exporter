@@ -121,7 +121,7 @@ def fetch_and_evaluate_rates():
     today = datetime.datetime.now()
     current_weekday = today.weekday()
 
-    is_discount_day = current_weekday in [5, 6, chosen_weekday]
+    is_discount_day = current_weekday in [5, 6, chosen_weekday] and option != "Option Base"
     active_rate = discount_rate if is_discount_day else standard_rate
     
     EDF_CURRENT_PRICE.set(active_rate)
