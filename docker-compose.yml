@@ -8,6 +8,6 @@ services:
       - EXPORTER_PORT=${EXPORTER_PORT:-9163}
       - SCRAPE_INTERVAL=${SCRAPE_INTERVAL:-86400}
     ports:
-      - "${EXPORTER_PORT:-9163}:${EXPORTER_PORT:-9163}"
+      - "${VPN_IP}:${EXPORTER_PORT:-9163}:${EXPORTER_PORT:-9163}"
     restart: unless-stopped
     pull_policy: always
