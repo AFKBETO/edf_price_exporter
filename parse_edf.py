@@ -18,6 +18,8 @@ except AttributeError:
 PORT = int(os.environ.get("EXPORTER_PORT", 9163))
 SCRAPE_INTERVAL = int(os.environ.get("SCRAPE_INTERVAL", 86400))
 CACHE_FILE = os.environ.get("EDF_CACHE_FILE", "edf_price_cache.json")
+PDF_URL = os.environ.get("EDF_PDF_URL", "https://particulier.edf.fr/content/dam/2-Actifs/Documents/Offres/grille-prix-zen-week-end-plus.pdf")
+
 
 WEEKDAY_MAP = {
     "monday": 0, "lundi": 0,
@@ -56,12 +58,20 @@ def load_from_cache():
     return 0.0, 0.0
 
 def fetch_and_evaluate_rates():
+    global chosen_weekday
     standard_rate, discount_rate = load_from_cache()
     is_scrape_failed = True
+    option = "Option WE"
+    regex = r"\b6\s+\d{2},\d{2}\s+(\d{2},\d{2})\s+(\d{2},\d{2})"
+    if PDF_URL.endswith("grille-prix-zen-week-end.pdf"):
+        option = "Option Week-End"
+        chosen_weekday = 6
+    if PDF_URL.endswith("Grille-prix-zen-fixe.pdf"):
+        option = "Option Base"
+        regex = r"\b6\s+\d{2},\d{2}\s+(\d{2},\d{2})"
 
     try:
-        pdf_url = "https://particulier.edf.fr/content/dam/2-Actifs/Documents/Offres/grille-prix-zen-week-end-plus.pdf"
-        response = requests.get(pdf_url)
+        response = requests.get(PDF_URL, timeout=10)
 
         with open("edf_grid.pdf", "wb") as f:
             f.write(response.content)
@@ -75,12 +85,12 @@ def fetch_and_evaluate_rates():
         lines = full_text.split("\n")
 
         for i, line in enumerate(lines):
-            if "Option WE" in line and "jour choisi" in line:
+            if option in line:
                 for sub_line in lines[i+15:i+30]:
-                    match = re.search(r"\b6\s+\d{2},\d{2}\s+(\d{2},\d{2})\s+(\d{2},\d{2})", sub_line)
+                    match = re.search(regex, sub_line)
                     if match:
                         standard_rate = float(match.group(1).replace(",", ".")) / 100
-                        discount_rate = float(match.group(2).replace(",", ".")) / 100
+                        discount_rate = float(match.group(2).replace(",", ".")) / 100 if option != "Option Base" else standard_rate
                         save_to_cache(standard_rate, discount_rate)
                         is_scrape_failed = False
                         break
@@ -104,6 +114,7 @@ if __name__ == '__main__':
     start_http_server(PORT, addr='0.0.0.0')
     print(f"EDF Pricing Exporter started on port {PORT}")
     print(f"Configured Chosen Weekday: {env_day.upper()}")
+    print(f"Configured PDF URL: {PDF_URL}")
 
     while True:
         fetch_and_evaluate_rates()
