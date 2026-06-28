@@ -1,0 +1,54 @@
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: docker
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Login to registry
+        shell: bash
+        run: |
+          echo ${{ secrets.CONTAINER_PAT }} | docker login -u ${{ secrets.CONTAINER_USER }} --password-stdin forgejo.minhviet.cc
+
+      - name: Build and push Docker image
+        shell: bash
+        run: |
+          IMAGE_NAME="forgejo.minhviet.cc/${{ forgejo.repository }}/edf_price_exporter:${{ forgejo.ref_name }}"
+          echo ${IMAGE_NAME}
+          docker build -t $IMAGE_NAME .
+          docker push $IMAGE_NAME
+
+      - name: Cleanup
+        shell: bash
+        if: always()
+        run: |
+          docker logout forgejo.minhviet.cc
+
+  deploy:
+    runs-on: production
+    needs: build
+    steps:
+      - name: Checkout docker-compose
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            docker-compose.yml
+          sparse-checkout-cone-mode: false
+
+      - name: Deploy to server
+        shell: bash
+        env:
+          REGISTRY: forgejo.minhviet.cc
+          LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+          EDF_CHOSEN_DAY: ${{ vars.EDF_CHOSEN_DAY }}
+          EDF_PDF_URL: ${{ vars.EDF_PDF_URL }}
+          EXPORTER_PORT: ${{ vars.EXPORTER_PORT }}
+          SCRAPE_INTERVAL: ${{ vars.SCRAPE_INTERVAL }}
+        run: |
+          docker compose up -d
+

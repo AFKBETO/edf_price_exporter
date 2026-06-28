@@ -1,0 +1,13 @@
+services:
+  edf_price_exporter:
+    image: ${REGISTRY}/${FORGEJO_REPOSITORY}/edf_price_exporter:${FORGEJO_REF_NAME}
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL}
+      - EDF_CHOSEN_DAY=${EDF_CHOSEN_DAY}
+      - EDF_PDF_URL=${EDF_PDF_URL}
+      - EXPORTER_PORT=${EXPORTER_PORT:-9163}
+      - SCRAPE_INTERVAL=${SCRAPE_INTERVAL:-86400}
+    ports:
+      - "${EXPORTER_PORT:-9163}:${EXPORTER_PORT:-9163}"
+    restart: unless-stopped
+    pull_policy: always
