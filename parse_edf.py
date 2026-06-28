@@ -3,6 +3,7 @@ import os
 import re
 import requests
 import time
+import logging
 import json
 from pypdf import PdfReader
 from prometheus_client import start_http_server, Gauge, REGISTRY, PROCESS_COLLECTOR, PLATFORM_COLLECTOR
@@ -17,9 +18,17 @@ except AttributeError:
 
 PORT = int(os.environ.get("EXPORTER_PORT", 9163))
 SCRAPE_INTERVAL = int(os.environ.get("SCRAPE_INTERVAL", 86400))
-CACHE_FILE = os.environ.get("EDF_CACHE_FILE", "edf_price_cache.json")
+CACHE_FILE = os.environ.get("CACHE_FILE", "edf_price_cache.json")
 PDF_URL = os.environ.get("EDF_PDF_URL", "https://particulier.edf.fr/content/dam/2-Actifs/Documents/Offres/grille-prix-zen-week-end-plus.pdf")
 
+log_level_str = os.environ.get("LOG_LEVEL", "info").upper()
+numeric_level = getattr(logging, log_level_str, logging.INFO)
+logging.basicConfig(
+    level=numeric_level,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger("edf_exporter")
 
 WEEKDAY_MAP = {
     "monday": 0, "lundi": 0,
@@ -43,8 +52,9 @@ def save_to_cache(standard, discount):
     try:
         with open(CACHE_FILE, "w") as f:
             json.dump({"standard_rate": standard, "discount_rate": discount}, f)
+        logger.debug(f"Successfully updated local cache backup file: {CACHE_FILE}")
     except Exception as e:
-        print(f"Warning: Could not write cache file: {e}")
+        logger.warning(f"Could not write fallback cache file to disk: {e}")
 
 def load_from_cache():
     """Loads the last known good rates from the local JSON file."""
@@ -52,9 +62,11 @@ def load_from_cache():
         try:
             with open(CACHE_FILE, "r") as f:
                 data = json.load(f)
+                logger.info("Successfully loaded historical pricing rates from local fallback cache disk layer.")
                 return float(data.get("standard_rate")), float(data.get("discount_rate"))
         except Exception as e:
-            print(f"Warning: Could not read cache file: {e}")
+            logger.error(f"Failed to decode local cache json payload format: {e}")
+    logger.critical("No valid cache backup file found on disk. Return all zeros.")
     return 0.0, 0.0
 
 def fetch_and_evaluate_rates():
@@ -71,7 +83,9 @@ def fetch_and_evaluate_rates():
         regex = r"\b6\s+\d{2},\d{2}\s+(\d{2},\d{2})"
 
     try:
+        logger.info("Initiating connection routine to download the official EDF PDF grid schema...")
         response = requests.get(PDF_URL, timeout=10)
+        response.raise_for_status()
 
         with open("edf_grid.pdf", "wb") as f:
             f.write(response.content)
@@ -80,6 +94,7 @@ def fetch_and_evaluate_rates():
         full_text = ""
         for page in reader.pages:
             full_text += page.extract_text()
+        logger.debug(f"Raw PDF text layer read complete. Extracted text segment length: {len(full_text)} characters.")
 
 
         lines = full_text.split("\n")
@@ -93,10 +108,12 @@ def fetch_and_evaluate_rates():
                         discount_rate = float(match.group(2).replace(",", ".")) / 100 if option != "Option Base" else standard_rate
                         save_to_cache(standard_rate, discount_rate)
                         is_scrape_failed = False
+                        logger.info("PDF document extraction succeeded. Live data values successfully extracted.")
                         break
                 if standard_rate:
                     break
-    except Exception:
+    except Exception as e:
+        logger.error(f"Network transport level or ingestion failure occurred during scraping pipeline step: {e}")
         is_scrape_failed = True
 
     EDF_SCRAPE_ERROR.set(1 if is_scrape_failed else 0) 
@@ -112,9 +129,15 @@ def fetch_and_evaluate_rates():
 
 if __name__ == '__main__':
     start_http_server(PORT, addr='0.0.0.0')
-    print(f"EDF Pricing Exporter started on port {PORT}")
-    print(f"Configured Chosen Weekday: {env_day.upper()}")
-    print(f"Configured PDF URL: {PDF_URL}")
+    logger.debug(f"Configured PDF URL: {PDF_URL}")
+    logger.info(f"EDF Exporter initialized natively. Listening for Prometheus requests on HTTP Port {PORT}")
+    if PDF_URL.endswith("grille-prix-zen-week-end.pdf"):
+        logger.info("Detected PDF URL for 'Zen Week-End'. Weekend discount rates will be applied on Saturday and Sunday.")
+    if PDF_URL.endswith("Grille-prix-zen-fixe.pdf"):
+        logger.info("Detected PDF URL for 'Zen Fixe'. No weekend discount rates will be applied. Only the standard rate will be used.")
+    if PDF_URL.endswith("grille-prix-zen-week-end-plus.pdf"):
+        logger.info(f"Detected PDF URL for 'Zen Week-End Plus'. Weekend discount rates will be applied on Saturday, Sunday, and the chosen weekday: {env_day.capitalize()}.")
+
 
     while True:
         fetch_and_evaluate_rates()
