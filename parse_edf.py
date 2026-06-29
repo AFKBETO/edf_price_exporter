@@ -17,28 +17,30 @@ except AttributeError:
     pass
 
 PORT = int(os.environ.get("EXPORTER_PORT", 9163))
-SCRAPE_INTERVAL = int(os.environ.get("SCRAPE_INTERVAL", 86400))
+
+SCRAPE_HOUR = int(os.environ.get("SCRAPE_HOUR", 0))
+
 CACHE_FILE = os.environ.get("CACHE_FILE", "edf_price_cache.json")
 PDF_URL = os.environ.get("EDF_PDF_URL", "https://particulier.edf.fr/content/dam/2-Actifs/Documents/Offres/grille-prix-zen-week-end-plus.pdf")
 
 log_level_str = os.environ.get("LOG_LEVEL", "info").upper()
 numeric_level = getattr(logging, log_level_str, logging.INFO)
 logging.basicConfig(
-    level=numeric_level,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+        level=numeric_level,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+        )
 logger = logging.getLogger("edf_exporter")
 
 WEEKDAY_MAP = {
-    "monday": 0, "lundi": 0,
-    "tuesday": 1, "mardi": 1,
-    "wednesday": 2, "mercredi": 2,
-    "thursday": 3, "jeudi": 3,
-    "friday": 4, "vendredi": 4,
-    "saturday": 5, "samedi": 5,
-    "sunday": 6, "dimanche": 6
-}
+        "monday": 0, "lundi": 0,
+        "tuesday": 1, "mardi": 1,
+        "wednesday": 2, "mercredi": 2,
+        "thursday": 3, "jeudi": 3,
+        "friday": 4, "vendredi": 4,
+        "saturday": 5, "samedi": 5,
+        "sunday": 6, "dimanche": 6
+        }
 
 EDF_CURRENT_PRICE = Gauge('edf_current_price', 'Current active electricity price in EUR/kWh')
 EDF_IS_DISCOUNT = Gauge('edf_is_discount_day', '1 if today is a discount rate day (weekend/chosen day), else 0')
@@ -123,9 +125,15 @@ def fetch_and_evaluate_rates():
 
     is_discount_day = current_weekday in [5, 6, chosen_weekday] and option != "Option Base"
     active_rate = discount_rate if is_discount_day else standard_rate
-    
+
     EDF_CURRENT_PRICE.set(active_rate)
     EDF_IS_DISCOUNT.set(1 if is_discount_day else 0)
+
+def get_seconds_until_midnight():
+    """Calculates the exact remaining seconds until 00:00 local time tomorrow."""
+    now = datetime.datetime.now()
+    tomorrow = datetime.datetime.combine(now.date() + datetime.timedelta(days=1), datetime.time.min)
+    return (tomorrow - now).total_seconds()
 
 if __name__ == '__main__':
     start_http_server(PORT, addr='0.0.0.0')
@@ -138,7 +146,22 @@ if __name__ == '__main__':
     if PDF_URL.endswith("grille-prix-zen-week-end-plus.pdf"):
         logger.info(f"Detected PDF URL for 'Zen Week-End Plus'. Weekend discount rates will be applied on Saturday, Sunday, and the chosen weekday: {env_day.capitalize()}.")
 
+    logger.info("Run initial scrape")
+    fetch_and_evaluate_rates()
 
     while True:
-        fetch_and_evaluate_rates()
-        time.sleep(SCRAPE_INTERVAL)
+        try:
+            seconds_left = get_seconds_until_midnight()
+            logger.info(f"Calculated transition path. Sleeping for {int(seconds_left)} seconds until the next 00:00 roll over.")
+
+            # The script will completely freeze execution here until the clock hits midnight
+            time.sleep(seconds_left)
+
+            # Midnight has arrived: update everything exactly at 00:00 local time
+            logger.info("Midnight 00:00 local time reached. Executing daily PDF check and calendar re-evaluation...")
+            fetch_and_evaluate_rates()
+
+        except (KeyboardInterrupt, SystemExit):
+            logger.info("Shutdown signal received. Stopping metrics engine workflow safely.")
+            break
+

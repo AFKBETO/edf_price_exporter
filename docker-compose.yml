@@ -2,11 +2,11 @@ services:
   edf_price_exporter:
     image: ${REGISTRY}/${FORGEJO_REPOSITORY}/edf_price_exporter:${FORGEJO_REF_NAME}
     environment:
-      - LOG_LEVEL=${LOG_LEVEL}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
       - EDF_CHOSEN_DAY=${EDF_CHOSEN_DAY}
       - EDF_PDF_URL=${EDF_PDF_URL}
       - EXPORTER_PORT=${EXPORTER_PORT:-9163}
-      - SCRAPE_INTERVAL=${SCRAPE_INTERVAL:-86400}
+      - SCRAPE_HOUR=${SCRAPE_HOUR:-0}
     ports:
       - "${VPN_IP}:${EXPORTER_PORT:-9163}:${EXPORTER_PORT:-9163}"
     restart: unless-stopped

@@ -48,7 +48,7 @@ jobs:
           EDF_CHOSEN_DAY: ${{ vars.EDF_CHOSEN_DAY }}
           EDF_PDF_URL: ${{ vars.EDF_PDF_URL }}
           EXPORTER_PORT: ${{ vars.EXPORTER_PORT }}
-          SCRAPE_INTERVAL: ${{ vars.SCRAPE_INTERVAL }}
+          SCRAPE_HOUR: ${{ vars.SCRAPE_HOUR }}
           VPN_IP: ${{ secrets.VPN_IP }}
         run: |
           docker compose up -d
