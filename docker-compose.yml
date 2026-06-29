@@ -11,3 +11,6 @@ services:
       - "${VPN_IP}:${EXPORTER_PORT:-9163}:${EXPORTER_PORT:-9163}"
     restart: unless-stopped
     pull_policy: always
+
+    volumes:
+      - /tmp/edf_price_cache.json:/app/edf_price_cache.json
