@@ -40,6 +40,12 @@ jobs:
             docker-compose.yml
           sparse-checkout-cone-mode: false
 
+      - name: Ensure creation of cache file
+        shell: bash
+        run: |
+          touch /tmp/edf_price_cache.json
+          chmod 666 /tmp/edf_price_cache.json
+
       - name: Deploy to server
         shell: bash
         env:
