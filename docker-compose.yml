@@ -9,7 +9,7 @@ services:
       - SCRAPE_HOUR=${SCRAPE_HOUR:-0}
     ports:
       - "${VPN_IP}:${EXPORTER_PORT:-9163}:${EXPORTER_PORT:-9163}"
-    restart: unless-stopped
+    restart: always
     pull_policy: always
 
     volumes:
